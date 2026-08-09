@@ -60,18 +60,19 @@ Platforme/
 │   ├── __init__.py             # exporte SOCReader, OpenSearchConfig, constantes
 │   ├── config.py               # configuration via variables d'environnement
 │   ├── client.py               # classe SOCReader : connexion + méthodes de requête
-│   └── models.py               # dataclasses LogEvent / Alert + mapping + to_dict()
+│   └── models.py               # dataclasses LogEvent / Alert / Finding / DetectorAlert
 ├── requirements.txt            # dépendance : opensearch-py
 ├── .env.example                # modèle de configuration (à copier en .env)
 ├── .gitignore                  # ignore .env, venv/, __pycache__/
 ├── README.md                   # ce fichier
-└── api_docs.html               # référence API consultable dans le navigateur
+├── api_docs.html               # référence API consultable dans le navigateur
+├── INTEGRATION_M1.md           # guide d'intégration avec le backend (M1)
+└── exemple_integration_m1.py   # script d'exemple pour le backend (M1)
 ```
 
-> Le cœur livrable est le paquet `soc_reader_client/`. C'est le seul dossier à
-> copier chez le consommateur (backend). Les fichiers `example.py` et
-> `test_soc_reader.py` (démonstration et tests, déjà validés à 9/9) restent dans
-> le dépôt mais ne sont pas nécessaires au déploiement.
+> Le cœur livrable est le paquet `soc_reader_client/` : c'est le seul dossier à
+> copier chez le consommateur (backend). Les autres fichiers sont la
+> documentation et les guides d'intégration.
 
 ### Rôle de chaque fichier du paquet
 
