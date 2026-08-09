@@ -1,0 +1,2 @@
+opensearch-py=3.2.0
+pytest=9.0.2
