@@ -1,5 +1,5 @@
 """
-Exemple d'intégration — côté backend (M1).
+Exemple d'intégration — persistance des données en base PostgreSQL.
 
 Montre comment le backend consomme la brique de lecture (L6.1) et insère les
 alertes dans PostgreSQL. Ce fichier est un GUIDE : les fonctions
@@ -14,7 +14,7 @@ Principe :
 
 from soc_reader_client import SOCReader
 
-# Ces imports viennent du backend M1 (adapter selon son arborescence) :
+# Ces imports viennent du backend de la plateforme (adapter selon l'arborescence) :
 # from app.schemas.alertes import AlerteCreate
 # from app.crud import inserer_alerte, resoudre_agent, resoudre_regle
 
@@ -40,7 +40,7 @@ def synchroniser_alertes_wazuh() -> None:
         alerte_create = AlerteCreate(
             regle_id=regle_id,                     # UUID de la règle
             agent_id=agent_id,                     # UUID de l'agent
-            severite=d["severite"],                # enum M1, fourni par la brique
+            severite=d["severite"],                # enum plateforme, fourni par la brique
             donnees_brutes=d["donnees_brutes"],    # doc brut, fourni par la brique
         )
 
@@ -51,15 +51,15 @@ def synchroniser_alertes_wazuh() -> None:
 def synchroniser_findings() -> None:
     """
     Exemple pour les findings de détecteurs.
-    NB : le modèle `alertes` de M1 exige agent_id/regle_id (NOT NULL). Un finding
-    n'a pas toujours d'agent unique — à clarifier avec M1 (voir INTEGRATION_M1.md).
+    NB : le modèle `alertes` exige agent_id/regle_id (NOT NULL). Un finding
+    n'a pas toujours d'agent unique — à clarifier (voir INTEGRATION_M1.md).
     """
     reader = SOCReader()
     for finding in reader.search_findings_typed(start="now-1h"):
         d = finding.to_dict()
         # d contient : detector_name, rule_names, severite (convertie),
         #              source_index, attack_techniques, donnees_brutes, ...
-        # ... résolution + insertion selon la décision de modélisation de M1
+        # ... résolution + insertion selon la décision de modélisation retenue
         ...
 
 
