@@ -620,19 +620,3 @@ Déploiement : voir la section 3 (« Déploiement chez un consommateur »).
 
 ---
 
-## 12. Points à finaliser
-
-- **Intégration schéma PostgreSQL (M1).** La base de M1 est normalisée (table
-  `alertes` avec FK UUID vers `agents` / `regles`, enums `severite` /
-  `statutalerte`). Le client fournit les valeurs lisibles + `donnees_brutes` ;
-  la résolution des UUID et le mapping des enums se font côté backend. Détail de
-  la correspondance dans `INTEGRATION_M1.md`. Points ouverts à valider avec M1 :
-  la table `alertes` reçoit-elle aussi les findings et alertes de détecteur ?
-  les événements de logs sont-ils stockés en base ou restent-ils dans OpenSearch ?
-- **Noms d'index (M2/M3).** Confirmer `soc-windows-*`, `soc-linux-waf-vpn-*`,
-  `wazuh-alerts-4.x-*`, `.opensearch-sap-*findings*` avec les responsables de
-  l'ingestion (L4/L5).
-- **Réseau.** Sur la VM plateforme, `SOC_OS_HOST=10.10.40.10` et ouverture du
-  flux `40.20 -> 40.10:9201`.
-- **Secrets.** Les mots de passe ayant circulé en clair pendant le développement
-  doivent être régénérés avant mise en production.
