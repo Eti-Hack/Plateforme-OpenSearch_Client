@@ -1,16 +1,20 @@
 # soc_reader_client — client Python de lecture OpenSearch (SOC)
 
-Brique **L6.1 · PFA-27** du projet *Plateforme SOC maison*.
+Brique **L6.1 · PFA-28** (*Connecteur OpenSearch en lecture seule*) du
+projet *Plateforme SOC maison*.
 
 Client Python **en lecture seule** vers OpenSearch. Il expose des méthodes de
 haut niveau pour interroger les événements de logs et les alertes de sécurité
-indexés dans le SIEM, et renvoie des structures Python normalisées prêtes à
-être stockées ou analysées.
+indexés dans le SIEM, et renvoie des structures Python normalisées.
 
-C'est une **brique réutilisable** : elle est consommée par le backend, puis par
-la console de requêtes (L6.2) et les outils MCP de lecture (L6.3). Elle ne
-connaît pas ses consommateurs — elle lit OpenSearch et expose des objets
-propres, rien de plus.
+C'est une **brique réutilisable** : ses consommateurs sont la **console de
+requêtes (L6.2, PFA-31)** et les **outils MCP de lecture (L6.3, PFA-73)**, qui
+l'importent pour interroger OpenSearch. Elle ne connaît pas ses consommateurs —
+elle lit OpenSearch et expose des objets propres, rien de plus. Tout composant
+qui aurait besoin de persister ces données dans la base PostgreSQL de la
+plateforme peut le
+faire à partir des objets fournis (voir `INTEGRATION_M1.md`), mais ce n'est pas
+le rôle de la brique.
 
 ---
 
@@ -26,7 +30,7 @@ propres, rien de plus.
 8. [Structures de données](#8-structures-de-données)
 9. [Tests](#9-tests)
 10. [Intégration par le backend](#10-intégration-par-le-backend)
-11. [Correspondance avec le ticket PFA-27](#11-correspondance-avec-le-ticket-pfa-27)
+11. [Correspondance avec le ticket PFA-28](#11-correspondance-avec-le-ticket-pfa-28)
 12. [Points à finaliser](#12-points-à-finaliser)
 
 ---
@@ -66,8 +70,8 @@ Platforme/
 ├── .gitignore                  # ignore .env, venv/, __pycache__/
 ├── README.md                   # ce fichier
 ├── api_docs.html               # référence API consultable dans le navigateur
-├── INTEGRATION_M1.md           # guide d'intégration avec le backend (M1)
-└── exemple_integration_m1.py   # script d'exemple pour le backend (M1)
+├── INTEGRATION_M1.md           # guide de persistance en base (console/MCP/backend)
+└── exemple_integration_m1.py   # script d'exemple pour la persistance en base
 ```
 
 > Le cœur livrable est le paquet `soc_reader_client/` : c'est le seul dossier à
@@ -457,7 +461,8 @@ depuis un document OpenSearch) et `to_dict()` (dictionnaire prêt pour la base).
 
 Les trois classes d'alertes (`Alert`, `Finding`, `DetectorAlert`) exposent aussi
 une méthode **`severite_m1()`** qui convertit leur échelle propre vers l'enum
-`Severite` de M1 (`faible`/`moyenne`/`haute`/`critique`). Cette valeur est incluse
+`Severite` de la plateforme (`faible`/`moyenne`/`haute`/`critique`). Cette valeur
+est incluse
 dans `to_dict()` sous la clé `severite`.
 
 ### Finding
@@ -548,65 +553,58 @@ Résultat attendu : **16 tests passants**. Couverture :
 
 ---
 
-## 10. Intégration par le backend
+## 10. Consommateurs de la brique
 
 Le module est une **librairie** importée dans le même processus Python que le
-backend — il n'y a pas d'API réseau entre les deux. Le backend importe la classe,
-appelle ses méthodes de lecture, récupère des objets, puis les écrit lui-même
-dans PostgreSQL.
+consommateur — il n'y a pas d'API réseau. Le consommateur importe la classe,
+appelle ses méthodes de lecture et récupère des objets typés
+(`LogEvent`, `Alert`, `Finding`, `DetectorAlert`).
 
-Chaque objet typé expose `to_dict()`, qui renvoie les **valeurs lisibles** (noms,
-identifiants métier, sévérité brute) **plus le document OpenSearch complet** sous
-la clé `donnees_brutes` (destinée à la colonne JSON de la base).
+Les deux consommateurs prévus sont :
+
+- **La console de requêtes (L6.2, PFA-31)** — importe la brique pour interroger
+  OpenSearch et **afficher** les résultats. Elle utilise les méthodes de
+  recherche/agrégation et les attributs des objets typés.
+- **Les outils MCP de lecture (L6.3, PFA-73)** — exposent les méthodes de la
+  brique comme des **outils** pour un agent. La clarté des méthodes et des objets
+  typés est ici essentielle (chaque méthode devient un outil MCP).
+
+Usage type (identique pour les deux) :
 
 ```python
 from soc_reader_client import SOCReader
 
 reader = SOCReader()
 
-for alerte in reader.search_alerts_typed(start="now-5m", min_level=5):
-    row = alerte.to_dict()
-    # row contient : agent_name, agent_ip, rule_id, rule_description, rule_level,
-    #                severite (déjà convertie), donnees_brutes (doc complet), ...
-    backend.inserer_alerte(row)   # le backend résout les UUID et insère
+# la console affiche, le MCP expose comme outil — même usage de lecture
+for al in reader.search_alerts_typed(start="now-1h", min_level=7):
+    print(al.agent_name, al.severite_m1(), al.rule_description)
 ```
 
-### Schéma normalisé : la résolution des références se fait côté backend
+### Persistance en base (cas secondaire)
 
-La base de M1 est **normalisée**. La table `alertes` référence `agents(id)` et
-`regles(id)` par **UUID**, et l'API attend un `AlerteCreate` à 4 champs :
+Si un composant (backend, ou la console/le MCP) souhaite **écrire** ces données
+dans PostgreSQL, chaque objet expose `to_dict()`, qui renvoie les valeurs
+lisibles + la sévérité déjà convertie vers l'enum de la plateforme (clé
+`severite`) + le
+document OpenSearch complet (`donnees_brutes`).
 
 ```python
-class AlerteCreate(BaseModel):
-    regle_id: uuid.UUID                    # à résoudre côté backend
-    agent_id: uuid.UUID                    # à résoudre côté backend
-    severite: Severite                     # faible / moyenne / haute / critique
-    donnees_brutes: Optional[dict] = None  # fourni par le client
+row = alerte.to_dict()
+# agent_name, agent_ip, rule_id, rule_description, severite (enum plateforme),
+# donnees_brutes (doc complet), ...
 ```
 
-Le client fournit les **valeurs lisibles** (`agent_name`, `agent_ip`, `rule_id`,
-`rule_description`) qui permettent au backend de résoudre les UUID dans ses tables
-`agents` / `regles`. Le client n'accède pas à PostgreSQL — c'est volontaire
-(découplage).
-
-**La sévérité est déjà convertie.** Chaque objet expose `severite_m1()` et inclut
-la clé `severite` dans `to_dict()`, dans l'enum de M1
-(`faible`/`moyenne`/`haute`/`critique`). Le backend n'a donc pas à la mapper :
-
-| Source | Échelle d'origine | → enum M1 |
-|--------|-------------------|-----------|
-| `Alert` (Wazuh) | niveau 0–4 / 5–7 / 8–11 / 12–15 | faible / moyenne / haute / critique |
-| `Finding` (Sigma) | low / medium / high / critical | faible / moyenne / haute / critique |
-| `DetectorAlert` | "4","5" / "3" / "2" / "1" | faible / moyenne / haute / critique |
-
-Le détail complet, source par source, ainsi que les questions ouvertes (findings
-sans agent, événements non stockés) sont dans **`INTEGRATION_M1.md`**.
+La base étant normalisée (FK UUID vers `agents` / `regles`), la résolution
+des UUID se fait côté composant écrivain — la brique ne touche pas PostgreSQL.
+Le détail de cette correspondance (utile à qui voudra persister) est dans
+**`INTEGRATION_M1.md`** et **`exemple_integration_m1.py`**.
 
 Déploiement : voir la section 3 (« Déploiement chez un consommateur »).
 
 ---
 
-## 11. Correspondance avec le ticket PFA-27
+## 11. Correspondance avec le ticket PFA-28
 
 | Sous-tâche demandée | Où c'est réalisé | État |
 |---------------------|------------------|------|
@@ -614,9 +612,15 @@ Déploiement : voir la section 3 (« Déploiement chez un consommateur »).
 | Recherche d'événements/alertes par période, règle/détecteur, hôte | `search_events`, `search_alerts`, `search_findings`, `search_detector_alerts` (+ variantes typées) | fait |
 | Agrégations simples (top hôtes, comptes par sévérité) | `top_hosts`, `count_by_severity` | fait |
 | Pagination (`search_after`) + limites de taille | `paginate` (`page_size`, `max_docs`) | fait |
-| Mapping des résultats vers structures internes | `models.py` (`LogEvent`, `Alert`, `Finding`, `DetectorAlert`, `to_dict`) | fait (résolution UUID côté M1, voir `INTEGRATION_M1.md`) |
-| Confirmer les noms d'index ECS + tests contre l'index réel | `test_soc_reader.py` (16 tests réels) | tests faits ; noms à confirmer M2/M3 |
-| Module réutilisable + doc d'usage | paquet `soc_reader_client/` + ce README | fait |
+| Mapping des résultats vers structures internes | `models.py` (`LogEvent`, `Alert`, `Finding`, `DetectorAlert`, `to_dict`) | fait |
+| Confirmer les noms d'index ECS + tests contre l'index réel | 16 tests contre le cluster réel | tests faits ; noms à confirmer avec l'ingestion (L4/L5) |
+| Module réutilisable + doc d'usage | paquet `soc_reader_client/` + ce README + `api_docs.html` | fait |
+
+> La sous-tâche « aligné sur le schéma de la base » du libellé initial concerne la
+> persistance en base, qui relève des consommateurs (console L6.2 / MCP L6.3) ou
+> du backend, pas de la brique elle-même. Le nécessaire est fourni
+> (`to_dict()`, `severite_m1()`, `donnees_brutes`) et documenté dans
+> `INTEGRATION_M1.md`.
 
 ---
 
